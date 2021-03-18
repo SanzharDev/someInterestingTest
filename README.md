@@ -1,4 +1,4 @@
-# flutter_sound_trial
+# flutter_trials
 
 A new Flutter application.
 
