@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+import 'package:flutter_sound_trial/grpc/client.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -17,6 +18,9 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
   bool _isRecorderInitialized = false;
   String _filePath = 'flutter_sound_example.wav';
   final int _sampleRate = 44000;
+  // gRPC variables
+  Client _client;
+  bool _isGrpcClientInitialized = true;
 
   @override
   void initState() {
@@ -25,6 +29,8 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
         _isRecorderInitialized = true;
       });
     });
+    _client = Client();
+    _isGrpcClientInitialized = true;
     super.initState();
   }
 
@@ -56,7 +62,9 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
   }
 
   Future<void> record() async {
-    assert(_isRecorderInitialized && _soundRecorder.isStopped);
+    assert(_isRecorderInitialized &&
+        _soundRecorder.isStopped &&
+        _isGrpcClientInitialized);
     final sink = await createFile();
     final recordingDataController = StreamController<Food>();
     _recordingDataSubscription =
