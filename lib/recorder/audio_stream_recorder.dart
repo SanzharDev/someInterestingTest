@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:developer';
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_sound/flutter_sound.dart';
 import 'package:flutter_sound_trial/grpc/client.dart';
@@ -16,11 +18,11 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
   FlutterSoundRecorder _soundRecorder = FlutterSoundRecorder();
   StreamSubscription _recordingDataSubscription;
   bool _isRecorderInitialized = false;
-  String _filePath = 'flutter_sound_example.wav';
-  final int _sampleRate = 44000;
+  String _filePath = 'flutter_sound_example.pcm';
   // gRPC variables
   Client _client;
   bool _isGrpcClientInitialized = true;
+  var _lastChunk;
 
   @override
   void initState() {
@@ -54,6 +56,7 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
   Future<IOSink> createFile() async {
     var appDir = await getApplicationDocumentsDirectory();
     _filePath = '${appDir.path}/flutter_sound_sample.pcm';
+    log(_filePath);
     final fileToWrite = File(_filePath);
     if (fileToWrite.existsSync()) {
       await fileToWrite.delete();
@@ -62,6 +65,7 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
   }
 
   Future<void> record() async {
+    log('Starting record');
     assert(_isRecorderInitialized &&
         _soundRecorder.isStopped &&
         _isGrpcClientInitialized);
@@ -70,28 +74,81 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
     _recordingDataSubscription =
         recordingDataController.stream.listen((buffer) {
       if (buffer is FoodData) {
+        _lastChunk = buffer.data;
         sink.add(buffer.data);
+        _client.sendOngoingRequestChunk(buffer.data);
       }
     });
     await _soundRecorder.startRecorder(
       toStream: recordingDataController.sink,
       codec: Codec.pcm16,
+      sampleRate: 16000,
       numChannels: 1,
-      sampleRate: _sampleRate,
     );
     setState(() {});
   }
 
   Future<void> stopRecorder() async {
     await _soundRecorder.stopRecorder();
+    log('Recorder stopped');
     if (_recordingDataSubscription != null) {
       await _recordingDataSubscription.cancel();
       _recordingDataSubscription = null;
+      log('Recording data subscription stopped');
     }
+    _client.sendFinalRequestChunk(_lastChunk);
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    return Container();
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Record to Stream'),
+      ),
+      body: Column(
+        children: [
+          Container(
+            margin: const EdgeInsets.all(3),
+            padding: const EdgeInsets.all(3),
+            height: 80,
+            width: double.infinity,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Color(0xFFFAF0E6),
+              border: Border.all(
+                color: Colors.indigo,
+                width: 3,
+              ),
+            ),
+            child: Row(
+              children: [
+                ElevatedButton(
+                  onPressed: record,
+                  //color: Colors.white,
+                  //disabledColor: Colors.grey,
+                  child: Text('Record'),
+                ),
+                SizedBox(
+                  width: 20,
+                ),
+                Text(_soundRecorder.isRecording
+                    ? 'Recording in progress'
+                    : 'Recorder is stopped'),
+                SizedBox(
+                  width: 20,
+                ),
+                ElevatedButton(
+                  onPressed: stopRecorder,
+                  //color: Colors.white,
+                  //disabledColor: Colors.grey,
+                  child: Text('Stop'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

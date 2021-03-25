@@ -34,16 +34,25 @@ class Client {
     }
   }
 
-  Future<SpeechRecognitionResponseChunk> sendFinalRequestChunk() async {
+  Future<SpeechRecognitionResponseChunk> sendFinalRequestChunk(
+      final lastChunk) async {
     var result = SpeechRecognitionResponseChunk();
     try {
-      result = await _sendRequest(List.empty(), true);
+      result = await _sendRequest(lastChunk, true);
     } catch (e) {
-      log('Something went wrong when last request chunk were sent');
+      log(e.toString());
+      log('Something went wrong when last request chunk were send');
       log('Result is assigned to a default SpeechRecognitionResponseChunk');
     } finally {
-      await channel.shutdown();
-      log('Channel closed');
+      try {
+        await channel.shutdown();
+        _isStubInitialized = false;
+      } catch (e) {
+        log('Error happened on channel shutdown');
+        log(e);
+      } finally {
+        log('Channel closed');
+      }
     }
     return result;
   }
@@ -59,13 +68,14 @@ class Client {
     log('Request chunk collected');
     Stream<SpeechRecognitionResponseChunk> response =
         stub.streamRecognize(outgoingRequestStream());
-    isLastChunk
-        ? log('Request send to STT Server')
+    !isLastChunk
+        ? log('Request sent to STT Server')
         : log('Final request chunk sent');
     SpeechRecognitionResponseChunk result = SpeechRecognitionResponseChunk();
     if (isLastChunk) {
       await for (var r in response) {
         result = r;
+        log('Awaited response from STT Server: ${r.alternatives.text}');
       }
     }
     return Future.value(result);
