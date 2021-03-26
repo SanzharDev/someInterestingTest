@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_sound/flutter_sound.dart';
+import 'package:flutter_sound_trial/generated/stt-service.pbgrpc.dart';
 import 'package:flutter_sound_trial/grpc/client.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -22,7 +23,7 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
   // gRPC variables
   Client _client;
   bool _isGrpcClientInitialized = true;
-  var _lastChunk;
+  StreamController<StreamingRecognitionRequest> _streamController;
 
   @override
   void initState() {
@@ -64,6 +65,39 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
     return fileToWrite.openWrite();
   }
 
+  Stream<StreamingRecognitionRequest> streamingRecognitionRequestsStream(
+      StreamController<Food> recordingDataController, IOSink sink) {
+    _recordingDataSubscription =
+        recordingDataController.stream.listen((buffer) {
+      if (buffer is FoodData) {
+        sink.add(buffer.data);
+        log('sending data');
+        _streamController.add(StreamingRecognitionRequest(
+            audioContent: buffer.data, getResult: false));
+      }
+    });
+    // _streamController = StreamController(
+    //   onCancel: stopController,
+    // );
+    _streamController = StreamController();
+    return _streamController.stream;
+  }
+
+  void stopController() {
+    log('Stopping controller');
+    _streamController.add(StreamingRecognitionRequest(
+        audioContent: List.empty(), getResult: true));
+    _streamController.close();
+  }
+
+  Future<void> stopDataSubscription() async {
+    if (_recordingDataSubscription != null) {
+      await _recordingDataSubscription.cancel();
+      _recordingDataSubscription = null;
+      log('Recording data subscription stopped');
+    }
+  }
+
   Future<void> record() async {
     log('Starting record');
     assert(_isRecorderInitialized &&
@@ -71,14 +105,8 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
         _isGrpcClientInitialized);
     final sink = await createFile();
     final recordingDataController = StreamController<Food>();
-    _recordingDataSubscription =
-        recordingDataController.stream.listen((buffer) {
-      if (buffer is FoodData) {
-        _lastChunk = buffer.data;
-        sink.add(buffer.data);
-        _client.sendOngoingRequestChunk(buffer.data);
-      }
-    });
+    _client.startStreaming(
+        streamingRecognitionRequestsStream(recordingDataController, sink));
     await _soundRecorder.startRecorder(
       toStream: recordingDataController.sink,
       codec: Codec.pcm16,
@@ -91,13 +119,12 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
   Future<void> stopRecorder() async {
     await _soundRecorder.stopRecorder();
     log('Recorder stopped');
-    if (_recordingDataSubscription != null) {
-      await _recordingDataSubscription.cancel();
-      _recordingDataSubscription = null;
-      log('Recording data subscription stopped');
-    }
-    _client.sendFinalRequestChunk(_lastChunk);
+    stopController();
+    stopDataSubscription();
     setState(() {});
+    _client.resultsStream().listen((value) {
+      log('result: ${value.alternatives.text}');
+    });
   }
 
   @override

@@ -7,6 +7,8 @@ class Client {
   sttServiceClient stub;
   ClientChannel channel;
   bool _isStubInitialized = false;
+  Stream<StreamingRecognitionRequest> _outgoingRequestStream;
+  ResponseStream<SpeechRecognitionResponseChunk> _result;
 
   void _init() {
     try {
@@ -15,7 +17,7 @@ class Client {
           options:
               const ChannelOptions(credentials: ChannelCredentials.insecure()));
       stub = sttServiceClient(channel,
-          options: CallOptions(timeout: Duration(seconds: 15)));
+          options: CallOptions(timeout: Duration(seconds: 45)));
       _isStubInitialized = true;
       log('gRPC Stub initialized');
     } catch (e) {
@@ -79,5 +81,21 @@ class Client {
       }
     }
     return Future.value(result);
+  }
+
+  Future<void> startStreaming(
+      Stream<StreamingRecognitionRequest> stream) async {
+    try {
+      if (!_isStubInitialized) {
+        _init();
+      }
+      _result = stub.streamRecognize(stream);
+    } catch (e) {
+      log('Something went wrong during streaming');
+    }
+  }
+
+  ResponseStream<SpeechRecognitionResponseChunk> resultsStream() {
+    return _result;
   }
 }
