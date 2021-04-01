@@ -24,6 +24,10 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
   Client _client;
   bool _isGrpcClientInitialized = true;
   StreamController<StreamingRecognitionRequest> _streamController;
+  // player
+  FlutterSoundPlayer _soundPlayer = FlutterSoundPlayer();
+  bool _isPlayerInitialized = false;
+  bool _isPlaybackReady = false;
 
   @override
   void initState() {
@@ -32,15 +36,25 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
         _isRecorderInitialized = true;
       });
     });
+    _soundPlayer.openAudioSession().then((value) {
+      setState(() {
+        _isPlayerInitialized = true;
+      });
+    });
     _client = Client();
-    _isGrpcClientInitialized = true;
+    setState(() {
+      _isGrpcClientInitialized = true;
+    });
     super.initState();
   }
 
   @override
   void dispose() {
     _soundRecorder.closeAudioSession();
+    _soundRecorder = null;
     _isRecorderInitialized = false;
+    _soundPlayer.closeAudioSession();
+    _soundPlayer = null;
     super.dispose();
   }
 
@@ -121,10 +135,33 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
     log('Recorder stopped');
     stopController();
     stopDataSubscription();
-    setState(() {});
+
     _client.resultsStream().listen((value) {
       log('result: ${value.alternatives.text}');
     });
+    setState(() {
+      _isPlaybackReady = true;
+    });
+  }
+
+  void play() async {
+    assert(_isPlayerInitialized &&
+        _isPlaybackReady &&
+        _soundRecorder.isStopped &&
+        _soundPlayer.isStopped);
+    await _soundPlayer.startPlayer(
+        fromURI: _filePath,
+        sampleRate: 16000,
+        codec: Codec.pcm16,
+        numChannels: 1,
+        whenFinished: () {
+          setState(() {});
+        }); // The readability of Dart is very special :-(
+    setState(() {});
+  }
+
+  Future<void> stopPlayer() async {
+    await _soundPlayer.stopPlayer();
   }
 
   @override
@@ -173,6 +210,34 @@ class _AudioStreamRecorderState extends State<AudioStreamRecorder> {
                 ),
               ],
             ),
+          ),
+          Container(
+            margin: const EdgeInsets.all(3),
+            padding: const EdgeInsets.all(3),
+            height: 80,
+            width: double.infinity,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Color(0xFFFAF0E6),
+              border: Border.all(
+                color: Colors.indigo,
+                width: 3,
+              ),
+            ),
+            child: Row(children: [
+              ElevatedButton(
+                onPressed: play,
+                //color: Colors.white,
+                //disabledColor: Colors.grey,
+                child: Text(_soundPlayer.isPlaying ? 'Stop' : 'Play'),
+              ),
+              SizedBox(
+                width: 20,
+              ),
+              Text(_soundPlayer.isPlaying
+                  ? 'Playback in progress'
+                  : 'Player is stopped'),
+            ]),
           ),
         ],
       ),

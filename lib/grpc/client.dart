@@ -17,7 +17,7 @@ class Client {
           options:
               const ChannelOptions(credentials: ChannelCredentials.insecure()));
       stub = sttServiceClient(channel,
-          options: CallOptions(timeout: Duration(seconds: 45)));
+          options: CallOptions(timeout: Duration(seconds: 660)));
       _isStubInitialized = true;
       log('gRPC Stub initialized');
     } catch (e) {
